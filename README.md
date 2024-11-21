@@ -90,3 +90,318 @@ or OpenID connect middleware.
 - Claims are like key-value pairs
 - Roles are just keys
 - We can use a combination of claims and roles to grant access
+
+## Install Microsoft.AspnetCore.Identity.EntityFrameworkCore
+- Once we install this package, we need to configure ApplicationDbContext as follows:
+```c#
+public class ApplicationDbContext:IdentityDbContext
+    {
+        public ApplicationDbContext(DbContextOptions options) : base(options) 
+        { 
+
+        }
+    }
+```
+- We also need to setup Program.cs to use SqlServer
+```c#
+builder.Services.AddDbContext<ApplicationDbContext>(
+    options => options.UseSqlServer(builder
+    .Configuration.GetConnectionString("DefaultConnection")));
+
+```
+- Next add a package called EntityFramework.Core.Tools
+- Open Package Manager Console and add the migration
+```shell
+add-migration AddIdentityTables
+```
+- It will add tables such as AspNetCoreUsers, AspNetCoreRoles, AspNetCoreClaims etc.
+- Next we need to add Identity Service to our application and configure it to use EntityFrameworkStores we have configured like this:
+```c#
+builder.Services.AddIdentity<IdentityUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>();
+
+```
+- To Add more columns to the AspNetUsers table, we can go to Models folder and add an ApplicationUser like this:
+```c#
+public class ApplicationUser:IdentityUser
+{
+    [Required]
+    public string Name { get; set; }
+
+}
+```
+- Then if we add migration, we will see not one but 2 columns being added: Discriminator and Name
+- Then we need to add views for Login and Register. First we will setup the ViewModels as follows:
+```c#
+public class RegisterViewModel
+{
+    [Required]
+    public string Name { get; set; }
+
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; }
+
+    [Required]
+    [DataType(DataType.Password)]
+    [Display(Name = "Password")]
+    [StringLength(100,ErrorMessage = "The {0} must be atleast {2} characters long",MinimumLength = 6)]
+    public string Password { get; set; }
+
+    [Required]
+    [DataType(DataType.Password)]
+    [Display(Name="Confirm Password")]
+    [Compare("Password",ErrorMessage = "The password and confirm password donot match")]
+    public string ConfirmPassword { get; set; }
+
+}
+```
+
+- Next step is to add the view for Register like this:
+```html
+@model RegisterViewModel
+
+<div class="row col-md-10 offset-md-1">
+    <h1 class="text-primary text-center pt-2">
+        Register
+    </h1>
+    <form method="post" asp-controller="Account" asp-action="Register">
+        <div class="border p-2 rounded">
+            <p class="text-center">Create a new Account</p>
+            <div asp-validation-summary="All" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Email" class="col-12"></label>
+                <div class="col-md-12">
+                    <input asp-for="Email" class="form-control"/>
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label asp-for="Name" class="col-12"></label>
+                <div class="col-md-12">
+                    <input asp-for="Name" class="form-control" />
+                    <span asp-validation-for="Name" class="text-danger"></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label asp-for="Password" class="col-12"></label>
+                <div class="col-md-12">
+                    <input asp-for="Password" class="form-control" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label asp-for="ConfirmPassword" class="col-12"></label>
+                <div class="col-md-12">
+                    <input asp-for="ConfirmPassword" class="form-control" />
+                    <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+                </div>
+            </div>
+            <div class="form-group pt-3">
+                
+                <div class="col-md-6 offset-md-3">
+                   <button class="btn btn-success form-control" type="submit">Register</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}
+
+```
+## Handling Registration
+- Registration is done using 2 Helper Classes: User Manager and SignIn Manager
+  
+```c#
+using IdentityManager.Models;
+using IdentityManager.Models.ViewModels;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+
+namespace IdentityManager.Controllers
+{
+    public class AccountController : Controller
+    {
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly SignInManager<IdentityUser> _signInManager;
+        public AccountController(SignInManager<IdentityUser> signInManager,UserManager<IdentityUser> userManager )
+        {
+            _signInManager = signInManager;
+            _userManager = userManager;
+        }
+        public IActionResult Register()
+        {
+            RegisterViewModel model = new RegisterViewModel();
+            return View(model);
+        }
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Register(RegisterViewModel registerViewModel)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = new ApplicationUser
+                {
+                    UserName = registerViewModel.Email,
+                    Email = registerViewModel.Email,
+                    Name = registerViewModel.Name
+                };
+
+                var result = await _userManager.CreateAsync(user, registerViewModel.Password);
+                if (result.Succeeded)
+                {
+                    await _signInManager.SignInAsync(user, false);
+                    return RedirectToAction("Index", "Home");
+                }
+            }
+            return View(registerViewModel);
+        }
+    }
+}
+
+```
+- The Discriminator column displays whether the user is an Identity User or Application User, it holds the type of user
+
+## Handling Errors
+
+```c#
+  public async Task<IActionResult> Register(RegisterViewModel registerViewModel)
+  {
+      if (ModelState.IsValid)
+      {
+          var user = new ApplicationUser
+          {
+              UserName = registerViewModel.Email,
+              Email = registerViewModel.Email,
+              Name = registerViewModel.Name
+          };
+
+          var result = await _userManager.CreateAsync(user, registerViewModel.Password);
+          if (result.Succeeded)
+          {
+              await _signInManager.SignInAsync(user, false);
+              return RedirectToAction("Index", "Home");
+          }
+
+          AddErrors(result);
+      }
+      return View(registerViewModel);
+  }
+
+  private void AddErrors(IdentityResult result)
+  {
+      foreach(var error in result.Errors)
+      {
+          ModelState.AddModelError(string.Empty, error.Description);
+      }
+  }
+```
+
+## Displaying SignedIn  User
+- Here note that in the partial view, we are injecting the SignInManager and UserManager
+- Also once, we sign in using AspNetCoreIdentity, it sets a special kind of claim 'User' which we can use to access various properties of the SignedIn User
+```c#
+@using Microsoft.AspNetCore.Identity
+
+@inject SignInManager<IdentityManager.Models.ApplicationUser> SignInManager
+@inject UserManager<IdentityManager.Models.ApplicationUser> UserManager
+
+
+<ul class="navbar-nav">
+    @if (SignInManager.IsSignedIn(User))
+    {
+        <li class="nav-item">
+            <a class="nav-link" href="#">@UserManager.GetUserName(User)</a>
+        </li>
+        <li class="nav-item">
+            <form id="logoutForm" method="post" class="form-inline" asp-controller="Account" asp-action="Logout">
+                <button type="submit" class="btn nav-link">Logout</button>
+            </form>
+        </li>
+    }
+    else
+    {
+        <li class="nav-item">
+            <a class="nav-link" asp-controller="Account" asp-action="Register">Register</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" asp-controller="Account" asp-action="Login">Login</a>
+        </li>
+    }
+</ul>
+
+
+```
+
+## Handling Login of a User
+```c#
+ [HttpPost]
+ [ValidateAntiForgeryToken]
+ public async Task<IActionResult> Login(LoginViewModel model)
+ {
+     if (ModelState.IsValid)
+     {
+
+         var result = await _signInManager.PasswordSignInAsync(model.Email,model.Password,model.RememberMe,lockoutOnFailure:false);
+         if (result.Succeeded)
+         { 
+             return RedirectToAction("Index", "Home");
+         }
+         else
+         {
+             ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
+             return View(model);
+         }
+        
+     }
+     return View(model);
+ }
+```
+
+## Handling Logout of a User
+```c#
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Logout()
+{
+    await _signInManager.SignOutAsync();
+    return RedirectToAction("Index", "Home");
+}
+```
+
+## Handling Url Redirects
+- Lets say a user is not logged in and tries to access a page, he will be redirected to login page
+- Once the user has successfully logged in, we want him to go back to the same page he was trying to login from
+```c#
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = null)
+{
+    ViewBag.ReturnUrl = returnUrl;
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if (ModelState.IsValid)
+    {
+
+        var result = await _signInManager.PasswordSignInAsync(model.Email,model.Password,model.RememberMe,lockoutOnFailure:false);
+        if (result.Succeeded)
+        { 
+            //return RedirectToAction("Index", "Home");
+            return LocalRedirect(returnUrl);
+        }
+        else
+        {
+            ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
+            return View(model);
+        }
+       
+    }
+    return View(model);
+}
+```
+
+  
