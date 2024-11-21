@@ -525,7 +525,70 @@ public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = 
 - Once the password has been reset we redirect the user to a Reset Password Confirmation View
 
 ## Confirm Email
+- In AspnetUser, we have a column EmailConfirmed
+- We can send a link to the user to confirm email, if confirmed, it will set this EmailConfirmed flag to true
+- We need to generate a token for Email Confirmation 
+```c#
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Register(RegisterViewModel registerViewModel, string returnUrl = null)
+{
+    ViewBag.ReturnUrl = returnUrl;
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if (ModelState.IsValid)
+    {
+        var user = new ApplicationUser
+        {
+            UserName = registerViewModel.Email,
+            Email = registerViewModel.Email,
+            Name = registerViewModel.Name
+        };
 
+        var result = await _userManager.CreateAsync(user, registerViewModel.Password);
+        if (result.Succeeded)
+        {
+            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var callbackUrl = Url.Action("ConfirmEmail", "Account",
+            new { userId = user.Id, code = code },
+            protocol: HttpContext.Request.Scheme);
+            await _emailSender.SendEmailAsync(user.Email, "Confirm Email",
+            $"Please confirm your email by clicking here: <a href='{callbackUrl}'>link</a>");
+
+            await _signInManager.SignInAsync(user, false);
+            //return RedirectToAction("Index", "Home");
+            return LocalRedirect(returnUrl);
+        }
+
+        AddErrors(result);
+    }
+    return View(registerViewModel);
+}
+```
+- Next we need to validate this token when the user clicks on the link in the email, and then set the EmailConfirmed flag to true
+
+```c#
+    [HttpGet]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> ConfirmEmail(string code,string userId)
+{
+    if (ModelState.IsValid)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+        {
+            return View("Error");
+        }
+        var result = await _userManager.ConfirmEmailAsync(user,code);
+        if (result.Succeeded)
+        {
+            return View();
+        }
+        
+    }
+    return View("Error");
+}
+
+```
 
 
 

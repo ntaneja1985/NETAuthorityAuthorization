@@ -59,7 +59,14 @@ namespace IdentityManager.Controllers
             return View(model);
         }
 
+        [HttpGet]
         public IActionResult Lockout()
+        {
+            return View();
+        }
+
+        [HttpGet]
+        public IActionResult Error()
         {
             return View();
         }
@@ -123,6 +130,27 @@ namespace IdentityManager.Controllers
         }
 
         [HttpGet]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ConfirmEmail(string code,string userId)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                {
+                    return View("Error");
+                }
+                var result = await _userManager.ConfirmEmailAsync(user,code);
+                if (result.Succeeded)
+                {
+                    return View();
+                }
+                
+            }
+            return View("Error");
+        }
+
+        [HttpGet]
         public IActionResult ResetPasswordConfirmation()
         {
             return View();
@@ -152,6 +180,13 @@ namespace IdentityManager.Controllers
                 var result = await _userManager.CreateAsync(user, registerViewModel.Password);
                 if (result.Succeeded)
                 {
+                    var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                    var callbackUrl = Url.Action("ConfirmEmail", "Account",
+                    new { userId = user.Id, code = code },
+                    protocol: HttpContext.Request.Scheme);
+                    await _emailSender.SendEmailAsync(user.Email, "Confirm Email",
+                    $"Please confirm your email by clicking here: <a href='{callbackUrl}'>link</a>");
+
                     await _signInManager.SignInAsync(user, false);
                     //return RedirectToAction("Index", "Home");
                     return LocalRedirect(returnUrl);
@@ -161,6 +196,8 @@ namespace IdentityManager.Controllers
             }
             return View(registerViewModel);
         }
+
+
 
         [HttpPost]
         [ValidateAntiForgeryToken]
