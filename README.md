@@ -403,5 +403,132 @@ public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = 
     return View(model);
 }
 ```
+## Default Password Requirements
+- If a user makes a specified number of unsuccessful logins, we can lockout the user
+- We have 2 columns in AspNetCoreUsers table: LockoutEnd and AccessFailedCount
+- Configuring Password options can be done in Program.cs file here:
+  ```c#
+    builder.Services.Configure<IdentityOptions>(
+    opt => {
+        opt.Password.RequireDigit = false;
+        opt.Password.RequireLowercase = false;
+        opt.Password.RequireNonAlphanumeric = false;
+    });
+  ```
+  ## Configuring Lockout
+  - In AspnetUsers table, we have LockoutEnd DateTime field
+  - If the user fails to login in 3 attempts, he will be locked out and we can setup a view to show to the user that he is locked out
+  - We can configure lockout options like this
+  ```c#
+    builder.Services.Configure<IdentityOptions>(
+    opt => {
+        opt.Password.RequireDigit = false;
+        opt.Password.RequireLowercase = false;
+        opt.Password.RequireNonAlphanumeric = false;
+        opt.Lockout.MaxFailedAccessAttempts = 3;
+        opt.SignIn.RequireConfirmedEmail = false;
+        opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    });
+  ```
+
+  ## Configuring Send Grid 
+  - Configure it like this:
+  - ![alt text](image-1.png)
+  - Install Nuget Package
+  - ![alt text](image-2.png)
+  - Now setup EmailSender.cs file like this
+  
+    ```c#
+    using Microsoft.AspNetCore.Identity.UI.Services;
+    using SendGrid.Helpers.Mail;
+    using SendGrid;
+
+    namespace IdentityManager.Services
+    {
+    public class EmailSender : IEmailSender
+    {
+        public string SendGridKey { get; set; }
+        public EmailSender(IConfiguration _config) 
+        {
+            SendGridKey = _config.GetValue<string>("SendGrid:SecretKey");
+        }
+        public  Task SendEmailAsync(string email, string subject, string htmlMessage)
+        {
+            var client = new SendGridClient(SendGridKey);
+            var from_email = new EmailAddress("test@example.com", "Example User");
+            var to_email = new EmailAddress(email);
+            var msg = MailHelper.CreateSingleEmail(from_email, to_email, subject, "", htmlMessage);
+            return client.SendEmailAsync(msg);
+            }
+        }
+    }
+    ```
+## Reset Password Token
+  - If the user forgets his password, we generate a token and send him a password reset link
+  ```c#
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+    {
+    if (ModelState.IsValid)
+    {
+        var user = await _userManager.FindByEmailAsync(model.Email);
+        if (user == null)
+        {
+            return RedirectToAction("ForgotPasswordConfirmation");
+        }
+
+        var code = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var callbackUrl = Url.Action("ResetPassword", "Account", 
+            new { userid = user.Id, code = code },
+            protocol:HttpContext.Request.Scheme);
+
+        await _emailSender.SendEmailAsync(model.Email, "Reset Password",
+            $"Please reset your password by clicking here: <a href='{callbackUrl}'>link</a>");
+        
+        return RedirectToAction(nameof(ForgotPasswordConfirmation));
+        }
+        return View(model);
+    }
+  ```
+
+- Also note, generating tokens will not work, till we first setup DefaultTokenProviders
+```c#
+    builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>().AddDefaultTokenProviders();
+```
+- Next when we receive the code in the email, we will need to show the user a Reset Password Screen with ability to enter a new password
+- Once we enter the new password, we will need to pass in the token which he received in his email, validate it and then reset the password
+```c#
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
+    {
+        if (ModelState.IsValid)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+            {
+                return RedirectToAction(nameof(ResetPasswordConfirmation));
+            }
+            var result = await _userManager.ResetPasswordAsync(user,model.Code, model.Password);
+            if(result.Succeeded)
+            {
+                return RedirectToAction(nameof(ResetPasswordConfirmation));
+            }
+            AddErrors(result);
+        }
+        return View();
+}
+
+```
+- Once the password has been reset we redirect the user to a Reset Password Confirmation View
+
+## Confirm Email
+
+
+
+
+
 
   
