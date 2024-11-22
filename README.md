@@ -858,6 +858,68 @@ public async Task<IActionResult> EnableAuthenticator()
  }
 ```
 
+# Authorization
+- Use the [Authorize] annotation
+- If the user tries to go to an action endpoint with authorize endpoint and he is not logged in, he is taken to the sign in page
+- We can enhance this with roles and claims
+- We can add this annotation at controller level also
+- This will make sure that all action methods inside a controller can be accessed by authorized users only
+- However, if we want to exclude any method from authorization inside this controller, we can use [AllowAnonymous] annotation
+- Method Level annotations take precedence over Controller Level Annotations
+- To create roles, we need to use Role Manager
+- When the user registers, we will show him a list of roles and allow him to select roles
+```c#
+
+    //Creating Roles
+  public async Task<IActionResult> Register(string returnUrl = null)
+  {
+      if (!_roleManager.RoleExistsAsync(SD.Admin).GetAwaiter().GetResult())
+      {
+          await _roleManager.CreateAsync(new IdentityRole(SD.Admin));
+          await _roleManager.CreateAsync(new IdentityRole(SD.User));
+      }
+     
+      
+    //Adding roles dynamically
+      ViewBag.ReturnUrl = returnUrl;
+      RegisterViewModel model = new RegisterViewModel()
+      { RoleList = _roleManager.Roles.Select(x=>x.Name).Select(i=>
+      new SelectListItem 
+          { 
+              Value = i, 
+              Text = i
+          })
+      };
+     
+      return View(model);
+  }
+
+  //Adding Roles for a user
+   if(registerViewModel.RoleSelected != null && registerViewModel.RoleSelected.Length > 0 && registerViewModel.RoleSelected == SD.Admin)
+ {
+     await _userManager.AddToRoleAsync(user, SD.Admin);
+ } else
+ {
+     await _userManager.AddToRoleAsync(user, SD.User);
+ }
+```
+- To ensure a functionality is accessible for a certain role use this
+```c#
+ [Authorize(Roles = SD.Admin)]
+ public IActionResult Privacy()
+ {
+     return View();
+ }
+```
+- If a user is not logged in, we may need to redirect them to an Access Denied Page.
+- This is set inside an application cookie in Program.cs here:
+```c#
+builder.Services.ConfigureApplicationCookie(opt =>
+{
+    opt.AccessDeniedPath = new PathString("/Account/NoAccess");
+});
+
+```
 
 
 

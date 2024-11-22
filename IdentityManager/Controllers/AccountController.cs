@@ -4,29 +4,104 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using System.Text.Encodings.Web;
 
 namespace IdentityManager.Controllers
 {
+    [Authorize]
     public class AccountController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly IEmailSender _emailSender;
         private readonly UrlEncoder _urlEncoder;
-        public AccountController(SignInManager<ApplicationUser> signInManager,UserManager<ApplicationUser> userManager, IEmailSender emailSender, UrlEncoder urlEncoder )
+        public AccountController(SignInManager<ApplicationUser> signInManager,UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IEmailSender emailSender, UrlEncoder urlEncoder )
         {
             _signInManager = signInManager;
             _userManager = userManager;
             _emailSender = emailSender;
             _urlEncoder = urlEncoder;
+            _roleManager = roleManager;
         }
-        public IActionResult Register(string returnUrl = null)
+        [AllowAnonymous]
+        public async Task<IActionResult> Register(string returnUrl = null)
         {
+            if (!_roleManager.RoleExistsAsync(SD.Admin).GetAwaiter().GetResult())
+            {
+                await _roleManager.CreateAsync(new IdentityRole(SD.Admin));
+                await _roleManager.CreateAsync(new IdentityRole(SD.User));
+            }
+           
+            
+            //list.Add(new SelectListItem() { Value = SD.Admin, Text = SD.Admin });
+            //list.Add(new SelectListItem() { Value = SD.User, Text = SD.User });
             ViewBag.ReturnUrl = returnUrl;
-            RegisterViewModel model = new RegisterViewModel();
+            RegisterViewModel model = new RegisterViewModel()
+            { RoleList = _roleManager.Roles.Select(x=>x.Name).Select(i=>
+            new SelectListItem 
+                { 
+                    Value = i, 
+                    Text = i
+                })
+            };
+           
             return View(model);
         }
+
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [AllowAnonymous]
+        public async Task<IActionResult> Register(RegisterViewModel registerViewModel, string returnUrl = null)
+        {
+            ViewBag.ReturnUrl = returnUrl;
+            returnUrl = returnUrl ?? Url.Content("~/");
+            if (ModelState.IsValid)
+            {
+                var user = new ApplicationUser
+                {
+                    UserName = registerViewModel.Email,
+                    Email = registerViewModel.Email,
+                    Name = registerViewModel.Name
+                };
+
+                var result = await _userManager.CreateAsync(user, registerViewModel.Password);
+                if (result.Succeeded)
+                {
+                    if(registerViewModel.RoleSelected != null && registerViewModel.RoleSelected.Length > 0 && registerViewModel.RoleSelected == SD.Admin)
+                    {
+                        await _userManager.AddToRoleAsync(user, SD.Admin);
+                    } else
+                    {
+                        await _userManager.AddToRoleAsync(user, SD.User);
+                    }
+                    var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                    var callbackUrl = Url.Action("ConfirmEmail", "Account",
+                    new { userId = user.Id, code = code },
+                    protocol: HttpContext.Request.Scheme);
+                    await _emailSender.SendEmailAsync(user.Email, "Confirm Email",
+                    $"Please confirm your email by clicking here: <a href='{callbackUrl}'>link</a>");
+
+                    await _signInManager.SignInAsync(user, false);
+                    //return RedirectToAction("Index", "Home");
+                    return LocalRedirect(returnUrl);
+                }
+
+                AddErrors(result);
+            }
+            registerViewModel.RoleList = _roleManager.Roles.Select(x => x.Name).Select(i =>
+             new SelectListItem
+             {
+                 Value = i,
+                 Text = i
+             });
+
+            return View(registerViewModel);
+        }
+
+        [AllowAnonymous]
         public IActionResult Login(string returnUrl = null)
         {
             ViewBag.ReturnUrl = returnUrl;
@@ -34,6 +109,7 @@ namespace IdentityManager.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = null)
         {
@@ -67,19 +143,9 @@ namespace IdentityManager.Controllers
             return View(model);
         }
 
+     
         [HttpGet]
-        public IActionResult Lockout()
-        {
-            return View();
-        }
-
-        [HttpGet]
-        public IActionResult Error()
-        {
-            return View();
-        }
-
-        [HttpGet]
+        [AllowAnonymous]
         public IActionResult ForgotPassword()
         {
             return View();
@@ -87,6 +153,7 @@ namespace IdentityManager.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [AllowAnonymous]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
         {
             if (ModelState.IsValid)
@@ -111,6 +178,7 @@ namespace IdentityManager.Controllers
         }
 
         [HttpGet]
+        [AllowAnonymous]
         public IActionResult ResetPassword(string code = null)
         {
             return code == null ? View("Error") : View();
@@ -118,6 +186,7 @@ namespace IdentityManager.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [AllowAnonymous]
         public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
         {
             if (ModelState.IsValid)
@@ -139,6 +208,7 @@ namespace IdentityManager.Controllers
 
         [HttpGet]
         [ValidateAntiForgeryToken]
+        [AllowAnonymous]
         public async Task<IActionResult> ConfirmEmail(string code,string userId)
         {
             if (ModelState.IsValid)
@@ -159,51 +229,19 @@ namespace IdentityManager.Controllers
         }
 
         [HttpGet]
+        [AllowAnonymous]
         public IActionResult ResetPasswordConfirmation()
         {
             return View();
         }
 
         [HttpGet]
+        [AllowAnonymous]
         public IActionResult ForgotPasswordConfirmation()
         {
             return View();
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Register(RegisterViewModel registerViewModel, string returnUrl = null)
-        {
-            ViewBag.ReturnUrl = returnUrl;
-            returnUrl = returnUrl ?? Url.Content("~/");
-            if (ModelState.IsValid)
-            {
-                var user = new ApplicationUser
-                {
-                    UserName = registerViewModel.Email,
-                    Email = registerViewModel.Email,
-                    Name = registerViewModel.Name
-                };
-
-                var result = await _userManager.CreateAsync(user, registerViewModel.Password);
-                if (result.Succeeded)
-                {
-                    var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                    var callbackUrl = Url.Action("ConfirmEmail", "Account",
-                    new { userId = user.Id, code = code },
-                    protocol: HttpContext.Request.Scheme);
-                    await _emailSender.SendEmailAsync(user.Email, "Confirm Email",
-                    $"Please confirm your email by clicking here: <a href='{callbackUrl}'>link</a>");
-
-                    await _signInManager.SignInAsync(user, false);
-                    //return RedirectToAction("Index", "Home");
-                    return LocalRedirect(returnUrl);
-                }
-
-                AddErrors(result);
-            }
-            return View(registerViewModel);
-        }
 
 
 
@@ -214,6 +252,28 @@ namespace IdentityManager.Controllers
             await _signInManager.SignOutAsync();
             return RedirectToAction("Index", "Home");
         }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult Lockout()
+        {
+            return View();
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult Error()
+        {
+            return View();
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult NoAccess()
+        {
+            return View();
+        }
+
 
 
         #region TwoFactorAuthentication
