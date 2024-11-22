@@ -590,6 +590,275 @@ public async Task<IActionResult> ConfirmEmail(string code,string userId)
 
 ```
 
+# Two-Factor Authentication
+
+## Enable Authenticator Get Endpoint
+- Two Factor authentication involves generating a code and sending it to the mobile phone of user using the Google Authenticator App or Microsoft Authenticator App
+- The user gets the code on the app and enters on the app screen
+- We will display a link to the user to setup 2 factor authenticator.
+- First step is to generate the token for the user:
+```c#
+ [HttpGet]
+[Authorize]
+public async Task<IActionResult> EnableAuthenticator()
+{
+    var user = await _userManager.GetUserAsync(User);
+    await _userManager.ResetAuthenticatorKeyAsync(user);
+    var token = await _userManager.GetAuthenticatorKeyAsync(user);
+    var model = new TwoFactorAuthenticationViewModel() { Token = token };
+    return View(model);
+}
+
+```
+- Next step is to display some UI to the user with the token and a textbox to enter the code
+- To do this first we need to setup the ViewModel for 2 Factor Authentication
+```c#
+    public class TwoFactorAuthenticationViewModel
+{
+    public string Code { get; set; }
+    public string Token { get; set; }
+}
+```
+- Next step is to verify the token(code) entered by the user
+```c#
+    [HttpPost]
+[Authorize]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> EnableAuthenticator(TwoFactorAuthenticationViewModel model)
+{
+    if(ModelState.IsValid)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        var succeeded = await _userManager.VerifyTwoFactorTokenAsync(user,_userManager.Options.Tokens.AuthenticatorTokenProvider, model.Code);
+        if (succeeded) 
+        {
+            await _userManager.SetTwoFactorEnabledAsync(user, enabled: true);
+        }
+        else
+        {
+            ModelState.AddModelError("Verify", "Your two factor code could not be validated");
+            return View(model); 
+        }
+
+        return RedirectToAction(nameof(AuthenticatorConfirmation));
+    }
+    return View("Error");
+    
+}
+
+```
+- The above code will then enable the Two Factor Authentication for the user. There is a column Two Factor enabled in AspNetUsers table which will be set to true
+- Next time the user logs in, he will be required to first sign in using his password and then using the 2 factor code.
+
+## Setup Two Factor Auth on Account
+- ![alt text](image-3.png)
+- ![alt text](image-4.png)
+- First the user will be required to go the Verify Authenticator Page once he has entered his password:
+```c#
+    [HttpGet]
+public async Task<IActionResult> VerifyAuthenticatorCode(bool rememberMe, string returnUrl = null)
+{
+    var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+    if(user == null)
+    {
+        return View("Error");
+    }
+    ViewBag.ReturnUrl = returnUrl;  
+
+    return View(new VerifyAuthenticatorViewModel() { RememberMe = rememberMe, ReturnUrl = returnUrl});  
+
+}
+```
+- Once the user enters the code from the Authenticator App, his code will be verified and if it is correct, the user is logged in
+```c#
+    [HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> VerifyAuthenticatorCode(VerifyAuthenticatorViewModel model)
+{
+    var returnUrl = model.ReturnUrl;
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if (!ModelState.IsValid) 
+    {
+        return View(model);
+    }
+    else
+    {
+
+        var result = await _signInManager.TwoFactorAuthenticatorSignInAsync(model.Code,
+             isPersistent: model.RememberMe,rememberClient: false);
+        if (result.Succeeded)
+        {
+            //return RedirectToAction("Index", "Home");
+            return LocalRedirect(returnUrl);
+        }
+        else if (result.IsLockedOut)
+        {
+            return View("Lockout");
+        }
+        else
+        {
+            ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
+            return View(model);
+        }
+
+    }
+}
+
+```
+## Setup the QR Code for 2 factor authentication
+- Go to this website: https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-enable-qrcodes?view=aspnetcore-9.0
+- Download QrCode.js from this site: https://davidshimjs.github.io/qrcodejs/
+- Put the QrCode.js inside the js folder in wwwroot
+- Modify the Enable Authenticator Code like this to generate the AuthenticatorUri
+```c#
+[HttpGet]
+[Authorize]
+public async Task<IActionResult> EnableAuthenticator()
+{
+    string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
+    var user = await _userManager.GetUserAsync(User);
+    await _userManager.ResetAuthenticatorKeyAsync(user);
+    var token = await _userManager.GetAuthenticatorKeyAsync(user);
+
+    string AuthUri = string.Format(AuthenticatorUriFormat,
+        _urlEncoder.Encode("IdentityManager"), _urlEncoder.Encode(user.Email),token);
+    
+    var model = new TwoFactorAuthenticationViewModel() { Token = token, QrCodeUrl = AuthUri };
+    
+    return View(model);
+}
+
+```
+
+- Display QRCode on Enable Authenticator View like this
+  
+```c#
+    @model TwoFactorAuthenticationViewModel
+
+        <div class="row col-md-10 offset-md-1">
+        <h1 class="text-primary text-center pt-2">
+        Enable Authenticator
+        </h1>
+        <form method="post">
+            <div class="border p-2 rounded">
+            <p class="text-center">Please enter the code below in your authenticator App</p>
+            <p class="text-center">@Model.Token</p>
+            <p class="text-center">
+                Alternatively, scan the below QR Code with your mobile phone
+            </p>
+            <div class="text-center" id="qrcode">
+
+            </div>
+            <div asp-validation-summary="All" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Code" class="col-12"></label>
+                <div class="col-md-12">
+                    <input asp-for="Code" class="form-control" />
+                    <span asp-validation-for="Code" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="form-group pt-3">
+
+                <div class="col-md-6 offset-md-3">
+                    <button class="btn btn-success form-control" type="submit">Submit</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    @{
+        <script src="~/js/qrcode.js"></script>
+        <script type="text/javascript">
+            new QRCode(document.getElementById("qrcode"), "@Model.QrCodeUrl");
+        </script>
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+        }
+    }
+
+  ```
+-  Also remember that if the user has 2 factor authentication enabled, after he signs in with his username/password redirect him to VerifyAuthenticator Page
+  
+  ```c#
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = null)
+    {
+    ViewBag.ReturnUrl = returnUrl;
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if (ModelState.IsValid)
+    {
+
+        var result = await _signInManager.PasswordSignInAsync(model.Email,model.Password,
+            model.RememberMe,lockoutOnFailure:true);
+        if (result.Succeeded)
+        { 
+            //return RedirectToAction("Index", "Home");
+            return LocalRedirect(returnUrl);
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            return RedirectToAction(nameof(VerifyAuthenticatorCode), new {returnUrl = returnUrl, rememberMe =  model.RememberMe});
+        }
+        else if (result.IsLockedOut)
+        {
+            return View("Lockout");
+        }
+        else
+        {
+            ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
+            return View(model);
+        }
+       
+    }
+    return View(model);
+    }
+
+  ```
+## Reset Two Factor Authentication
+- We also have the option to reset the 2 factor Authentication
+- First we need to setup the view. If the user has successfully logged in, he has the option to remove the 2 factor authentication
+```c#
+
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    @if(User.Identity.IsAuthenticated)
+    {
+        var twoFactor = ViewBag.TwoFactorEnabled;
+        if (twoFactor != null && twoFactor.ToString().ToLower() == "true")
+        {
+            <a asp-action="RemoveAuthenticator" asp-controller="Account" class="btn btn-warning">Reset and Remove 2 Factor Authentication</a>
+            <br />
+        }
+        else {
+            <a asp-action="EnableAuthenticator" asp-controller="Account">Setup 2 Factor Authenticator</a>
+            <br/>
+        }
+    }
+    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    </div>
+
+```
+- Then if we clicks on Remove Authentication then the following code is executed and the user will have to setup 2 factor authentication again.
+- ![alt text](image-5.png)
+```c#
+ [HttpGet]
+ public async Task<IActionResult> RemoveAuthenticator()
+ {
+     var user = await _userManager.GetUserAsync(User);
+     await _userManager.ResetAuthenticatorKeyAsync(user);
+     await _userManager.SetTwoFactorEnabledAsync(user, false);
+     return RedirectToAction(nameof(Index), "Home");
+ }
+```
+
+
 
 
 
