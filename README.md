@@ -920,7 +920,7 @@ builder.Services.ConfigureApplicationCookie(opt =>
 });
 
 ```
-# Role Management
+## Role Management
 - Just like SignInManager and UserManager, we have RolesManager which we can use to create/edit/delete roles
 ```c#
  public class RoleController : Controller
@@ -1046,6 +1046,308 @@ public IActionResult Index()
 }
 
 ```
+
+## Assign Role to Users
+- We need to Manage Roles for the User
+- Earlier we saw how we could create CRUD operations related to Roles
+- Now we need to show the roles currently assigned to a user and the list of roles available
+- ![alt text](image-6.png)
+- ![alt text](image-7.png)
+- Following is the code for displaying the Manage Roles Screen
+```c#
+ [HttpGet]
+ public async Task<IActionResult> ManageRole(string userId)
+ {
+     ApplicationUser user = await _userManager.FindByIdAsync(userId);
+     if (user == null)
+     {
+         return NotFound();
+     }
+     List<string> existingUserRoles = await _userManager.GetRolesAsync(user) as List<string>;
+     var model = new RolesViewModel()
+     {
+         User = user
+     };
+     foreach (var role in _roleManager.Roles)
+     {
+         RoleSelection roleSelection = new()
+         {
+             RoleName = role.Name
+         };
+         if (existingUserRoles.Any(c => c == role.Name))
+         {
+             roleSelection.IsSelected = true;
+         }
+         model.RolesList.Add(roleSelection);
+     }
+     return View(model);
+ }    
+```
+- For saving the role assignment we have the following code:
+- We first remove all the existing roles and then add roles based on selection for the user
+```c#
+ [HttpPost]
+public async Task<IActionResult> ManageRole(RolesViewModel rolesViewModel)
+{
+    ApplicationUser user = await _userManager.FindByIdAsync(rolesViewModel.User.Id);
+    if (user == null)
+    {
+        return NotFound();
+    }
+  var oldUserRoles = await _userManager.GetRolesAsync(user);
+    //Remove old roles
+  var result = await _userManager.RemoveFromRolesAsync(user,oldUserRoles);
+
+    if(!result.Succeeded)
+    {
+        TempData[SD.Error] = "Error while removing roles";
+        return View(rolesViewModel);
+    }
+
+    result = await _userManager.AddToRolesAsync(user, 
+        rolesViewModel.RolesList.Where(x => x.IsSelected).Select(x => x.RoleName));
+
+
+    if (!result.Succeeded)
+    {
+        TempData[SD.Error] = "Error while adding roles";
+        return View(rolesViewModel);
+    }
+
+    TempData[SD.Success] = "Roles assigned Successfully";
+    return RedirectToAction(nameof(Index));
+}
+```
+- Code for displaying the Manage Roles Screen is as follows:
+```html
+        
+    @model RolesViewModel
+
+<form method="post">
+  <input asp-for="@Model.User.Id" hidden/>
+<br/>
+<div class="card shadow border-0 mt-4">
+    <div class="card-header bg-success bg-gradient m-lg-0 py-3">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h2 class="text-white py-2">Manage User Roles</h2>
+            </div>
+
+        </div>
+    </div>
+    <div class="card-body p-4">
+            <div class="border p-2 rounded">
+               
+                <div class="form-group">
+                    <label class="col-12">User Name</label>
+                    <div class="col-md-12">
+                        <input asp-for="User.Name" disabled class="form-control" />     
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-12">User Email</label>
+                    <div class="col-md-12">
+                        <input asp-for="User.Email" disabled class="form-control" />
+                    </div>
+                </div>
+
+                <div class="form-group mt-3 p-2 border rounded">
+                    <span>Roles Assignment</span>
+                    @for(int i = 0; i<Model.RolesList.Count;i++)
+                    {
+                        <div class="m-2 form-check">
+                            <input asp-for="@Model.RolesList[i].RoleName" hidden/>
+                            <input asp-for="@Model.RolesList[i].IsSelected" class="form-check-input" />
+                            <label class="form-check-label" asp-for="@Model.RolesList[i].IsSelected">
+                                @Model.RolesList[i].RoleName
+                            </label>
+                        </div>
+                    }
+                </div>
+                
+                <div class="form-group pt-3 row">
+                    <div class="col-md-6">
+                        <a class="btn btn-secondary w-100" asp-action="Index">Back to List</a>
+                    </div>
+                    <div class="col-md-6">
+                       
+                            <input class="btn btn-success w-100 form-control" type="submit" value="Update"/>
+                        
+                    </div>
+                </div>
+            </div>
+    </div>
+
+</div>
+
+</form>
+
+```
+### Lock Unlock Users 
+- For locking/unlocking users we have the following code:
+  ```c#
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> LockUnlock(string userId)
+    {
+    ApplicationUser user = _db.ApplicationUser.FirstOrDefault(x => x.Id == userId);
+    if (user == null)
+    {
+        return NotFound();
+    }
+
+    if(user.LockoutEnd != null && user.LockoutEnd > DateTime.Now)
+    {
+        //user is locked and will remain locked until locked out endtime
+        //clicking on this action will unlock them
+        user.LockoutEnd = DateTime.Now;
+        TempData[SD.Success] = "User unlocked successfully";
+
+    } else
+    {
+        //user is not locked and we want to lock the user
+        user.LockoutEnd = DateTime.Now.AddYears(1000);
+        TempData[SD.Success] = "User locked successfully";
+    }
+
+    _db.SaveChanges();
+
+    return RedirectToAction(nameof(Index));
+    }
+
+  ```
+  - For deleting users, we have the following code:
+```c#
+  [HttpPost]
+ [ValidateAntiForgeryToken]
+ public async Task<IActionResult> DeleteUser(string userId)
+ {
+     var user = _db.ApplicationUser.FirstOrDefault(u => u.Id == userId);
+     if(user == null)
+     {
+         return NotFound();
+     }
+     _db.ApplicationUser.Remove(user);
+     _db.SaveChanges();
+     TempData["Success"] = "User deleted successfully";
+     return RedirectToAction(nameof(Index));
+ }
+
+```
+
+## Claim Management
+- We should use combination of Roles and Claims 
+- If role is Admin, we can add further claims for the Admin users 
+- Claims is built in AspNetCore Identity
+- *We have AspNetUserClaims ans AspNetRoleClaims table*
+- There we have Claim Type and Claim Value
+- We have to create a Claims Store where we will have all the claims in the application
+- We can create the Crud Functionality around Claims same as Roles
+```c#
+[HttpGet]
+public async Task<IActionResult> ManageUserClaim(string userId)
+{
+    ApplicationUser user = await _userManager.FindByIdAsync(userId);
+    if (user == null)
+    {
+        return NotFound();
+    }
+    var existingUserClaims = await _userManager.GetClaimsAsync(user);
+    var model = new ClaimsViewModel()
+    {
+        User = user
+    };
+    foreach (Claim claim in ClaimStore.claimsList)
+    {
+        ClaimSelection userClaim = new()
+        {
+            ClaimType = claim.Type
+        };
+        if (existingUserClaims.Any(c => c.Type == claim.Type))
+        {
+            userClaim.IsSelected = true;
+        }
+        model.ClaimsList.Add(userClaim);
+    }
+    return View(model);
+}
+
+
+
+[HttpPost]
+public async Task<IActionResult> ManageUserClaim(ClaimsViewModel claimsViewModel)
+{
+    ApplicationUser user = await _userManager.FindByIdAsync(claimsViewModel.User.Id);
+    if (user == null)
+    {
+        return NotFound();
+    }
+    var oldUserClaims = await _userManager.GetClaimsAsync(user);
+    //Remove old roles
+    var result = await _userManager.RemoveClaimsAsync(user, oldUserClaims);
+
+    if (!result.Succeeded)
+    {
+        TempData[SD.Error] = "Error while removing claims";
+        return View(claimsViewModel);
+    }
+
+    result = await _userManager.AddClaimsAsync(user,
+        claimsViewModel.ClaimsList.Where(x => x.IsSelected).Select(x => new Claim(x.ClaimType,x.IsSelected.ToString())));
+
+
+    if (!result.Succeeded)
+    {
+        TempData[SD.Error] = "Error while adding claims";
+        return View(claimsViewModel);
+    }
+
+    TempData[SD.Success] = "Claims assigned Successfully";
+    return RedirectToAction(nameof(Index));
+}
+
+```
+- The View Model for Claims is as follows:
+```c#
+namespace IdentityManager.Models.ViewModels
+{
+    public class ClaimsViewModel
+    {
+        public ClaimsViewModel()
+        {
+            ClaimsList = [];
+        }
+        public List<ClaimSelection> ClaimsList { get; set; }
+        public ApplicationUser User { get; set; }
+
+    }
+
+    public class ClaimSelection
+    {
+        public string ClaimType { get; set; }
+        public bool IsSelected { get; set; }
+    }
+}
+
+```
+- Claim Store currently looks like this:
+```c#
+  public static class ClaimStore
+ {
+     public static List<Claim> claimsList = [
+         new Claim("Create","Create"),
+         new Claim("Edit","Edit"),
+         new Claim("Delete","Delete")
+
+         ];
+
+ }
+```
+- ![alt text](image-8.png)
+- ![alt text](image-9.png)
+
+## Role Policy and Requirements in .NET
+
 
 
 
