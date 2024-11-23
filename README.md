@@ -920,7 +920,7 @@ builder.Services.ConfigureApplicationCookie(opt =>
 });
 
 ```
-# Assigning Roles to Users 
+# Role Management
 - Just like SignInManager and UserManager, we have RolesManager which we can use to create/edit/delete roles
 ```c#
  public class RoleController : Controller
