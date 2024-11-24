@@ -1347,6 +1347,164 @@ namespace IdentityManager.Models.ViewModels
 - ![alt text](image-9.png)
 
 ## Role Policy and Requirements in .NET
+- Policy based authorized is designed to decouple authorization and application logic
+- A policy is just a collection of requirements which the user must meet before access is granted
+- Policy depends on business logic
+- We can have a policy which is just a condition that only authorized admin user can access this particular endpoint
+- Creating a Policy is done in Program.cs
+  ```c#
+    builder.Services.AddAuthorization(opt =>
+    {
+    opt.AddPolicy("Admin", policy => policy.RequireRole(SD.Admin));
+    opt.AddPolicy("AdminANDUser", policy => policy.RequireRole(SD.Admin).RequireRole(SD.User));
+    });
+  ```
+- Working with Claims is not possible in Roles Based Authorization. Need Claims based authorization
+- Setup AccessCheckerController with corresponding Views
+```c#
+    using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace IdentityManager.Controllers
+{
+    [Authorize]
+    public class AccessCheckerController : Controller
+    {
+        //Anyone can access this
+
+        [AllowAnonymous]
+        public IActionResult AllAccess()
+        {
+            return View();
+        }
+
+
+        //Anyone that has logged in can access
+        public IActionResult AuthorizedAccess()
+        {
+            return View();
+        }
+        //Anyone that has logged in with user or admin role can access
+
+        [Authorize(Roles = $"{SD.Admin},{SD.User}")]
+        public IActionResult UserOrAdminRoleAccess()
+        {
+            return View();
+        }
+
+        //[Authorize(Roles = $"{SD.Admin},{SD.User}")]
+        [Authorize(Policy = "AdminANDUser")]
+        public IActionResult UserANDAdminRoleAccess()
+        {
+            return View();
+        }
+
+        //Anyone that has logged in with Admin Role can access
+        //[Authorize(Roles = SD.Admin)]
+        [Authorize(Policy ="Admin")]
+        public IActionResult AdminRoleAccess()
+        {
+            return View();
+        }
+
+        //Anyone that has logged in with Admin Role and Create Claim can access
+        [Authorize(Policy = "Admin_CreateAccess_Claim")]
+        public IActionResult Admin_CreateAccess()
+        {
+            return View();
+        }
+
+        //Anyone that has logged in with Admin Role and Create & Edit & Delete Claim can access and Not OR
+        [Authorize(Policy = "Admin_CreateEditDeleteAccess_Claim")]
+        public IActionResult Admin_Create_Edit_DeleteAccess()
+        {
+            return View();
+        }
+
+        //Anyone that has logged in with Admin Role and Create & Edit & Delete Claim can access and Not OR
+        [Authorize(Policy = "Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole")]
+        public IActionResult Admin_Create_Edit_DeleteAccess_OR_SuperAdmin()
+        {
+            return View();
+        }
+    }
+}
+
+```
+- For Claims, we create Claims in Program.cs 
+  ```c#
+    builder.Services.AddAuthorization(opt =>
+    {
+    opt.AddPolicy("Admin", policy => policy.RequireRole(SD.Admin));
+    opt.AddPolicy("AdminANDUser", policy => policy.RequireRole(SD.Admin).RequireRole(SD.User));
+    opt.AddPolicy("Admin_CreateAccess_Claim", policy => policy.RequireRole(SD.Admin).RequireClaim("Create","True"));
+    opt.AddPolicy("Admin_CreateEditDeleteAccess_Claim", policy => policy
+    .RequireRole(SD.Admin)
+    .RequireClaim("Create", "True")
+    .RequireClaim("Edit", "True")
+    .RequireClaim("Delete", "True"))
+    ;
+    opt.AddPolicy("Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole", policy => policy.RequireAssertion(
+        context=>
+    Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole(context)
+    ));
+
+
+     bool Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole(AuthorizationHandlerContext context)
+    {
+    return (
+    context.User.IsInRole(SD.Admin)
+    && context.User.HasClaim(c => c.Type == "Create" && c.Value == "True")
+    && context.User.HasClaim(c => c.Type == "Edit" && c.Value == "True")
+    && context.User.HasClaim(c => c.Type == "Delete" && c.Value == "True")
+    )
+
+    ||
+    context.User.IsInRole(SD.SuperAdmin);
+    }
+  ```
+  ## Requirements and Handlers in Policy
+  - We want to implement a custom policy in which we will display a special page to users whose accounts are over 1000 days old and user role is Admin 
+  - ![alt text](image-10.png)
+  - We will create a handler as follows:
+  - ![alt text](image-11.png)
+### Adding Custom Authorization Handler
+```c#
+     public class OnlySuperAdminChecker : AuthorizationHandler<OnlySuperAdminChecker>, IAuthorizationRequirement
+ {
+     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, OnlySuperAdminChecker requirement)
+     {
+         if(context.User.IsInRole(SD.SuperAdmin))
+         {
+             context.Succeed(requirement);
+             return Task.CompletedTask;
+         }
+         else return Task.CompletedTask;
+     }
+ }
+
+ //Using Custom Authorization Holder
+ //Configuring in Program.cs file first
+  opt.AddPolicy("OnlySuperAdminChecker", policy => policy.Requirements.Add(new OnlySuperAdminChecker()));
+
+  //Adding custom policy to the Action method
+  
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        //[Authorize(Roles = SD.SuperAdmin)]
+        [Authorize(Policy = "OnlySuperAdminChecker")]
+        public async Task<IActionResult> Delete(string roleId)
+        {
+        }
+
+```
+- Please note that when we create a Policy in Program.cs file, we add a built in Authorization Requirements
+- For e.g if we write RequireRole() we use the RoleAuthorizationRequirement and when we use RequireClaim we use the ClaimsAuthorizationRequirement
+- Similarly in RequireAssertion we add an Assertion Requirement
+- So, as you can see above, when we add a Custom Authorization Requirement, we also have to specify the Authorization Requirement
+- In our case, we implement the IAuthorizationRequirement interface
+  
+
 
 
 

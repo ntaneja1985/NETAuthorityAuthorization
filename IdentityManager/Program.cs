@@ -4,6 +4,10 @@ using IdentityManager.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity.UI.Services;
+using IdentityManager;
+using System.Drawing.Text;
+using Microsoft.AspNetCore.Authorization;
+using IdentityManager.Authorize;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +38,23 @@ builder.Services.Configure<IdentityOptions>(
         opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
     });
 
+builder.Services.AddAuthorization(opt =>
+{
+    opt.AddPolicy("Admin", policy => policy.RequireRole(SD.Admin));
+    opt.AddPolicy("AdminANDUser", policy => policy.RequireRole(SD.Admin).RequireRole(SD.User));
+    opt.AddPolicy("Admin_CreateAccess_Claim", policy => policy.RequireRole(SD.Admin).RequireClaim("Create","True"));
+    opt.AddPolicy("Admin_CreateEditDeleteAccess_Claim", policy => policy
+    .RequireRole(SD.Admin)
+    .RequireClaim("Create", "True")
+    .RequireClaim("Edit", "True")
+    .RequireClaim("Delete", "True"))
+    ;
+    opt.AddPolicy("Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole", policy => policy.RequireAssertion(
+        context=>
+    Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole(context)
+    ));
+    opt.AddPolicy("OnlySuperAdminChecker", policy => policy.Requirements.Add(new OnlySuperAdminChecker()));
+});
 
 var app = builder.Build();
 
@@ -59,3 +80,16 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+ bool Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole(AuthorizationHandlerContext context)
+{
+    return (
+    context.User.IsInRole(SD.Admin)
+    && context.User.HasClaim(c => c.Type == "Create" && c.Value == "True")
+    && context.User.HasClaim(c => c.Type == "Edit" && c.Value == "True")
+    && context.User.HasClaim(c => c.Type == "Delete" && c.Value == "True")
+    )
+
+    ||
+    context.User.IsInRole(SD.SuperAdmin);
+}

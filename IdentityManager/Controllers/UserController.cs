@@ -19,23 +19,25 @@ namespace IdentityManager.Controllers
             _userManager = userManager;
             _roleManager = roleManager;
         }
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
             var usersList = _db.ApplicationUser.ToList();
-            var userRole = _db.UserRoles.ToList();
-            var roles = _db.Roles.ToList();
+            
 
             foreach (var user in usersList)
             {
-                var user_Role = userRole.FirstOrDefault(x=>x.UserId == user.Id);
-                if (user_Role == null)
+                var user_Role = await _userManager.GetRolesAsync(user) as List<string>;
+                user.Role = String.Join(",",user_Role);
+                var user_Claim =  _userManager.GetClaimsAsync(user).GetAwaiter().GetResult().Select(u=>u.Type);
+                if (user_Claim != null)
                 {
-                    user.Role = "none";
+                    user.UserClaim = String.Join(",", user_Claim);
                 }
-                else 
+                else
                 {
-                    user.Role = roles.FirstOrDefault(u => u.Id == user_Role.RoleId).Name;
+                    user.UserClaim = "";
                 }
+
             }
             return View(usersList);
         }

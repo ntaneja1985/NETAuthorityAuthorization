@@ -70,9 +70,9 @@ namespace IdentityManager.Controllers
                 var result = await _userManager.CreateAsync(user, registerViewModel.Password);
                 if (result.Succeeded)
                 {
-                    if(registerViewModel.RoleSelected != null && registerViewModel.RoleSelected.Length > 0 && registerViewModel.RoleSelected == SD.Admin)
+                    if(registerViewModel.RoleSelected != null)
                     {
-                        await _userManager.AddToRoleAsync(user, SD.Admin);
+                        await _userManager.AddToRoleAsync(user, registerViewModel.RoleSelected);
                     } else
                     {
                         await _userManager.AddToRoleAsync(user, SD.User);
