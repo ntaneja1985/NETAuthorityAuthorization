@@ -18,5 +18,7 @@ namespace IdentityManager.Models
         [NotMapped]
         public string UserClaim { get; set; }
 
+        public DateTime DateCreated { get; set; }
+
     }
 }

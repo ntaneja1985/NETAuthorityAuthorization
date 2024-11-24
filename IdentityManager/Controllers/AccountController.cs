@@ -64,7 +64,8 @@ namespace IdentityManager.Controllers
                 {
                     UserName = registerViewModel.Email,
                     Email = registerViewModel.Email,
-                    Name = registerViewModel.Name
+                    Name = registerViewModel.Name,
+                    DateCreated = DateTime.Now
                 };
 
                 var result = await _userManager.CreateAsync(user, registerViewModel.Password);
@@ -121,7 +122,19 @@ namespace IdentityManager.Controllers
                 var result = await _signInManager.PasswordSignInAsync(model.Email,model.Password,
                     model.RememberMe,lockoutOnFailure:true);
                 if (result.Succeeded)
-                { 
+                {
+                    var user = await _userManager.GetUserAsync(User);
+                    var claim = await _userManager.GetClaimsAsync(user);
+
+                    if(claim.Count > 0)
+                    {
+                        var specificClaim = claim.FirstOrDefault(u => u.Type == "FirstName");
+                        if (specificClaim != null)
+                        {
+                            await _userManager.RemoveClaimAsync(user, specificClaim);
+                        }
+                    }
+                    await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("FirstName",user.Name));
                     //return RedirectToAction("Index", "Home");
                     return LocalRedirect(returnUrl);
                 }

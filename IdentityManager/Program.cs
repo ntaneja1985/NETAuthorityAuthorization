@@ -8,6 +8,7 @@ using IdentityManager;
 using System.Drawing.Text;
 using Microsoft.AspNetCore.Authorization;
 using IdentityManager.Authorize;
+using IdentityManager.Services.IServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,7 +55,13 @@ builder.Services.AddAuthorization(opt =>
     Admin_CreateEditDeleteAccess_Claim_OR_SuperAdminRole(context)
     ));
     opt.AddPolicy("OnlySuperAdminChecker", policy => policy.Requirements.Add(new OnlySuperAdminChecker()));
+    opt.AddPolicy("AdminWithMoreThan1000Days", policy => policy.Requirements.Add(new AdminWithMoreThan1000DaysRequirement(1000)));
+    opt.AddPolicy("FirstNameAuth", policy => policy.Requirements.Add(new FirstNameAuthRequirement("Admin")));
 });
+
+builder.Services.AddScoped<INumberOfDaysForAccount,NumberOfDaysForAccount>();
+builder.Services.AddScoped<IAuthorizationHandler,AdminWithOver1000DaysHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, FirstNameAuthHandler>();
 
 var app = builder.Build();
 

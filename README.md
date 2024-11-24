@@ -1503,6 +1503,139 @@ namespace IdentityManager.Controllers
 - Similarly in RequireAssertion we add an Assertion Requirement
 - So, as you can see above, when we add a Custom Authorization Requirement, we also have to specify the Authorization Requirement
 - In our case, we implement the IAuthorizationRequirement interface
+
+## Implementing Custom Policies based on Requirements
+- We can create our own specific Requirements and then create Authorization Handlers to handle those requirements
+- For e.g we can have a DateCreated Field for each user and check that if all users that were created more than 1000 days ago can access a specific page
+- First we create the Requirement
+```c#
+ public class AdminWithMoreThan1000DaysRequirement:IAuthorizationRequirement
+{
+    public AdminWithMoreThan1000DaysRequirement(int days)
+    {
+        Days = days;
+    }
+    public int Days { get; set; }
+}
+
+```
+- Then we create the Handler
+```c#
+ public class AdminWithOver1000DaysHandler : AuthorizationHandler<AdminWithMoreThan1000DaysRequirement>
+{
+    private readonly INumberOfDaysForAccount _numberOfDaysForAccount;
+    public AdminWithOver1000DaysHandler(INumberOfDaysForAccount numberOfDaysForAccount)
+    {
+        _numberOfDaysForAccount = numberOfDaysForAccount;
+    }
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, AdminWithMoreThan1000DaysRequirement requirement)
+    {
+        if(!context.User.IsInRole(SD.Admin))
+        {
+            return Task.CompletedTask;
+        }
+
+        //this is an admin account
+        var userId = context.User.FindFirst(c=>c.Type == ClaimTypes.NameIdentifier)?.Value;
+        var numberOfDays = _numberOfDaysForAccount.Get(userId);
+        if (numberOfDays >= requirement.Days)
+        {
+            context.Succeed(requirement); 
+        }
+        return Task.CompletedTask;
+    }
+}
+
+```
+- Next we specific a policy in Program.cs 
+```c#
+     opt.AddPolicy("AdminWithMoreThan1000Days", policy => policy.Requirements.Add(new AdminWithMoreThan1000DaysRequirement(1000)));
+```
+- Finally we can call this policy over an Action Method 
+```c#
+   [Authorize(Policy = "AdminWithMoreThan1000Days")]
+  public IActionResult OnlyNishant()
+  {
+      return View();
+  }
+```
+- Similar to this we can also check if a user has a specific text in his FirstName then that user can see a specific Page
+- Create the Requirement first
+```c#
+ public class FirstNameAuthRequirement : IAuthorizationRequirement
+{
+    public FirstNameAuthRequirement(string name)
+    {
+        Name = name;
+    }
+    public string Name { get; set; }
+}
+```
+- Add the claim when the user logs in Login Post Action Method in AccountController.cs
+```c#
+     var claim = await _userManager.GetClaimsAsync(user);
+
+    if(claim.Count > 0)
+ {
+     var specificClaim = claim.FirstOrDefault(u => u.Type == "FirstName");
+     if (specificClaim != null)
+     {
+         await _userManager.RemoveClaimAsync(user, specificClaim);
+     }
+ }
+ await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("FirstName",user.Name));
+
+```
+- Next create the handler
+```c#
+ public class FirstNameAuthHandler : AuthorizationHandler<FirstNameAuthRequirement>
+{
+    public UserManager<ApplicationUser> _userManager { get; set; }
+    public ApplicationDbContext _db { get; set; }
+    public FirstNameAuthHandler(UserManager<ApplicationUser> userManager, ApplicationDbContext db)
+    {
+        _userManager = userManager;
+        _db = db;
+    }
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, FirstNameAuthRequirement requirement)
+    {
+
+        var userId = context.User.FindFirst(c=>c.Type == ClaimTypes.NameIdentifier)?.Value;
+        var user = _db.ApplicationUser.FirstOrDefault(u=>u.Id == userId);
+        if (user != null)
+        {
+            var firstNameClaim = _userManager.GetClaimsAsync(user)
+                .GetAwaiter().GetResult()
+                .FirstOrDefault(u => u.Type == "FirstName");
+
+            if (firstNameClaim != null)
+            {
+                if (firstNameClaim.Value.ToLower().Contains(requirement.Name.ToLower()))
+                {
+                    context.Succeed(requirement);
+                }
+            }
+        }
+        return Task.CompletedTask;
+    }
+}
+```
+- Next, create Policy in Program.cs 
+```c#
+  opt.AddPolicy("FirstNameAuth", policy => policy.Requirements.Add(new FirstNameAuthRequirement("Admin")));
+```
+- Then add this policy over an Action Method
+```c#
+ [Authorize(Policy = "FirstNameAuth")]
+public IActionResult FirstNameAuth()
+{
+    return View();
+}
+```
+
+## Single Sign On
+  
+
   
 
 

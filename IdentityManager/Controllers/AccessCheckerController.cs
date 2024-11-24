@@ -63,5 +63,17 @@ namespace IdentityManager.Controllers
         {
             return View();
         }
+
+        [Authorize(Policy = "AdminWithMoreThan1000Days")]
+        public IActionResult OnlyNishant()
+        {
+            return View();
+        }
+
+        [Authorize(Policy = "FirstNameAuth")]
+        public IActionResult FirstNameAuth()
+        {
+            return View();
+        }
     }
 }
