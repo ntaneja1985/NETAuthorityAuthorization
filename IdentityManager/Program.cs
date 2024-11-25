@@ -63,8 +63,8 @@ builder.Services.AddAuthorization(opt =>
 //ID: 41d9a19b-4b1c-4a96-b99e-4064f002acbd
 builder.Services.AddAuthentication().AddMicrosoftAccount(opt =>
 {
-    opt.ClientId = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
-    opt.ClientSecret = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
+    //opt.ClientId = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
+    //opt.ClientSecret = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
 });
 
 //builder.Services.AddAuthentication().AddFacebook(opt =>
