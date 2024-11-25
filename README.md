@@ -1647,8 +1647,8 @@ public IActionResult FirstNameAuth()
   ```c#
     builder.Services.AddAuthentication().AddMicrosoftAccount(opt =>
     {
-    //opt.ClientId = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
-    //opt.ClientSecret = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
+        //opt.Client_Id_Name = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
+    //opt.Client_Secr8_Name = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
     });
   ```
 - Next step is to add a link to the external identity provider like Microsoft in our case
@@ -1805,7 +1805,7 @@ public async Task<IActionResult> ExternalLoginConfirmation(ExternalLoginConfirma
 builder.Services.AddAuthentication().AddFacebook(opt =>
 {
     //opt.ClientId = "";
-    //opt.ClientSecret = "";
+    //opt.Client_Secr8_Name = "";
     
 });
 ```
