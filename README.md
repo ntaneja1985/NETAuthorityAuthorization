@@ -1634,7 +1634,183 @@ public IActionResult FirstNameAuth()
 ```
 
 ## Single Sign On
-  
+  - Single Sign On can now be done using Microsoft Entra ID 
+  - We will first need to do an App Registration
+  - ![alt text](image-12.png)
+  - Then we need to copy the Client Id 
+  - ![alt text](image-13.png)
+  - Then we need to create a Client Secret
+  - ![alt text](image-14.png)
+  - Finally in our app we need to setup microsoft as an external authentication provider
+  - We need to install a nuget package: Microsoft.AspNetCore.Authentication.MicrosoftAccount
+  - Then we need to configure Program.cs with clientId and client secret
+  ```c#
+    builder.Services.AddAuthentication().AddMicrosoftAccount(opt =>
+    {
+    opt.ClientId = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
+    opt.ClientSecret = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
+    });
+  ```
+- Next step is to add a link to the external identity provider like Microsoft in our case
+- We need to modify Login.cshtml to include the below mentioned code
+- Please note we iterate through all external authentication schemes configured in our project and get the login providers from them
+```c#
+    @model LoginViewModel
+    @using Microsoft.AspNetCore.Identity
+    @inject SignInManager<ApplicationUser> signInManager
+        @{
+    var schemes = await signInManager.GetExternalAuthenticationSchemesAsync();
+    var loginProviders = schemes.ToList();
+    }
+
+    @if(loginProviders.Count() > 0)
+    {
+    <div>
+        <hr/>
+        <div class="col-12 p-3 text-center border rounded">
+            <section>
+                <p>Use another service to log in</p>
+                <form asp-controller="Account" asp-action="ExternalLogin" asp-route-returnUrl="@ViewBag.ReturnUrl" method="post" role="form">
+                    <div>
+                        <p>
+                            @foreach(var provider in loginProviders)
+                            {
+                                <button type="submit" class="btn btn-primary" name="provider" value="@provider.Name">@provider.Name</button>
+                            }
+                        </p>
+                    </div>
+                </form>
+            </section>
+            </div>
+        </div>
+    
+    }
+
+
+```
+
+- Then we will have to setup the HttpPost method for External Login and also setup a callback that the external provider returns to after authentication
+```c#
+ [HttpPost]
+[AllowAnonymous]
+[ValidateAntiForgeryToken]
+public IActionResult ExternalLogin(string provider, string returnUrl = null)
+{
+    var redirectUrl = Url.Action("ExternalLoginCallback", "Account", new { returnUrl });
+    var properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+    return  Challenge(properties,provider);
+}
+
+[HttpGet]
+[AllowAnonymous]
+public async Task<IActionResult> ExternalLoginCallback(string returnUrl = null, string remoteError = null)
+{
+
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if(remoteError != null)
+    {
+        ModelState.AddModelError(string.Empty, $"Error from external provider: {remoteError}");
+        return View(nameof(Login));
+    }
+
+    var info = await _signInManager.GetExternalLoginInfoAsync();
+    if(info == null)
+    {
+        return RedirectToAction(nameof(Login));
+    }
+
+    //sign in the user with this external login provider. only if they have a login
+    var result = await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false, bypassTwoFactor: true);
+    if(result.Succeeded)
+    {
+        await _signInManager.UpdateExternalAuthenticationTokensAsync(info);
+        return LocalRedirect(returnUrl);
+    }
+    if (result.RequiresTwoFactor)
+    {
+        return RedirectToAction(nameof(VerifyAuthenticatorCode), new {  returnUrl });
+    }
+    else
+    {
+        //that means user account is not created and we will display a view to create an account
+        ViewBag.ReturnUrl = returnUrl;
+        ViewBag.ProviderDisplayName = info.ProviderDisplayName;
+        return View("ExternalLoginConfirmation", new ExternalLoginConfirmationViewModel
+        {
+            Email = info.Principal.FindFirstValue(ClaimTypes.Email),
+            Name = info.Principal.FindFirstValue(ClaimTypes.Name)
+            //Email = "",
+            //Name = ""
+        });
+    }
+}
+
+```
+- This will display an External Login Confirmation page to the user if he is coming for the first time. If the user has already registered, he will be taken to home screen
+- Finally if we have a first time user, we will need to register him like this
+```c#
+ [HttpPost]
+[AllowAnonymous]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> ExternalLoginConfirmation(ExternalLoginConfirmationViewModel model
+    ,string returnUrl = null)
+{
+
+    returnUrl = returnUrl ?? Url.Content("~/");
+    if(ModelState.IsValid)
+    {
+        var info = await _signInManager.GetExternalLoginInfoAsync();
+        if (info == null)
+        {
+            return View("Error");
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = model.Email,
+            Email = model.Email,
+            Name = model.Name,
+            NormalizedEmail = model.Email.ToUpper(),
+            DateCreated = DateTime.Now
+        };
+
+        var result = await _userManager.CreateAsync(user);
+        if (result.Succeeded)
+        {
+           
+           await _userManager.AddToRoleAsync(user, SD.User);
+            //Add External Login Info
+            result = await _userManager.AddLoginAsync(user, info);
+            if(result.Succeeded)
+            {
+                await _signInManager.SignInAsync(user, false);
+                await _signInManager.UpdateExternalAuthenticationTokensAsync(info);
+                return LocalRedirect(returnUrl);
+            }
+
+        }
+
+        AddErrors(result);
+    }
+
+    ViewBag.ReturnUrl = returnUrl;
+    return View(model);
+    
+}
+
+```
+- Similar to Microsoft, we can setup Facebook login also once we add the Facebook Authentication nuget package like this
+- We will have AppId and AppSecret in case of facebook
+```c#
+builder.Services.AddAuthentication().AddFacebook(opt =>
+{
+    opt.ClientId = "";
+    opt.ClientSecret = "";
+    
+});
+```
+- We also need to configure our redirectUrl in similar way to microsoft as localhost:7135/signin-facebook
+
 
   
 

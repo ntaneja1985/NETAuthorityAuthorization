@@ -59,9 +59,25 @@ builder.Services.AddAuthorization(opt =>
     opt.AddPolicy("FirstNameAuth", policy => policy.Requirements.Add(new FirstNameAuthRequirement("Admin")));
 });
 
+//value: iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab
+//ID: 41d9a19b-4b1c-4a96-b99e-4064f002acbd
+builder.Services.AddAuthentication().AddMicrosoftAccount(opt =>
+{
+    opt.ClientId = "41d9a19b-4b1c-4a96-b99e-4064f002acbd";
+    opt.ClientSecret = "iEW8Q~6zvfiNplxiWiZq41Dli04IRm554Q2LEbab";
+});
+
+//builder.Services.AddAuthentication().AddFacebook(opt =>
+//{
+//    opt.ClientId = "";
+//    opt.ClientSecret = "";
+    
+//});
+
 builder.Services.AddScoped<INumberOfDaysForAccount,NumberOfDaysForAccount>();
 builder.Services.AddScoped<IAuthorizationHandler,AdminWithOver1000DaysHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, FirstNameAuthHandler>();
+
 
 var app = builder.Build();
 
